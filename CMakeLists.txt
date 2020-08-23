@@ -66,6 +66,7 @@ target_compile_options(simd_test_copts_common INTERFACE
     $<$<CXX_COMPILER_ID:Clang>:-Wshadow-all>
     $<$<STREQUAL:$<CONFIG>,Debug>:-ggdb>
     $<$<STREQUAL:$<CONFIG>,Release>:${SIMD_TEST_EXTRA_CFLAGS}>
+    $<$<STREQUAL:$<CONFIG>,RelWithDebInfo>:${SIMD_TEST_EXTRA_CFLAGS}>
     $<$<BOOL:${SIMD_TEST_COVERAGE}>:-g -fprofile-arcs -ftest-coverage>)
 target_link_libraries(simd_test_copts_common
     INTERFACE

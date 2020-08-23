@@ -12,14 +12,18 @@ Checks:    "bugprone-*,\
             modernize-*,\
             performance-*,\
             readability-*,\
+            -cppcoreguidelines-avoid-c-arrays,\
             -cppcoreguidelines-avoid-magic-numbers,\
             -cppcoreguidelines-non-private-member-variables-in-classes,\
             -cppcoreguidelines-pro-bounds-array-to-pointer-decay,\
+            -cppcoreguidelines-pro-bounds-constant-array-index,\
+            -cppcoreguidelines-pro-bounds-pointer-arithmetic,\
             -cppcoreguidelines-pro-type-union-access,\
             -google-readability-braces-around-statements,\
             -google-readability-todo,\
             -google-runtime-references,\
             -llvm-header-guard,\
+            -modernize-avoid-c-arrays,\
             -readability-avoid-const-params-in-decls,\
             -readability-redundant-member-init,\
             -readability-magic-numbers,\

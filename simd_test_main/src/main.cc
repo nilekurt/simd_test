@@ -1,12 +1,66 @@
 #include <array>
 #include <iostream>
+#include <random>
 #include <smmintrin.h>
 #include <sstream>
 #include <string>
 
+using two_float __attribute__((vector_size(sizeof(float) * 2))) = float;
+using four_float __attribute__((vector_size(sizeof(float) * 4))) = float;
+
+auto
+to_m128(two_float x) -> __m128
+{
+    union {
+        __m128    whole;
+        two_float parts[2];
+    } result{};
+
+    result.parts[0] = x;
+    return result.whole;
+}
+
+auto
+to_m128(__m128 v) -> __m128
+{
+    return v;
+}
+
+template<typename T>
+auto
+from_m128(__m128 x) -> T;
+
+template<>
+auto
+from_m128(__m128 x) -> float
+{
+    union {
+        __m128 whole;
+        float  parts[4];
+    } result{};
+
+    result.whole = x;
+
+    return result.parts[0];
+}
+
+template<>
+auto
+from_m128(__m128 x) -> two_float
+{
+    union {
+        __m128    whole;
+        two_float parts[2];
+    } result{};
+
+    result.whole = x;
+
+    return result.parts[0];
+}
+
 template<typename T,
-         std::size_t DimX,
-         std::size_t DimY,
+         int DimX,
+         int DimY,
          typename = std::enable_if_t<std::is_arithmetic_v<T>>>
 struct Mat {
     using vector_type __attribute__((vector_size(sizeof(T) * DimX))) = T;
@@ -19,31 +73,31 @@ struct Mat {
     auto
     operator+(const Mat & other) -> Mat &
     {
-        for (int i = 0; i < static_cast<int>(DimY); ++i) {
+        for (int i = 0; i < DimY; ++i) {
             data_.rows[i] += other.data_.rows[i];
         }
 
         return *this;
     }
 
-    template<std::size_t DimZ>
+    template<int DimZ>
     auto
     operator*(const Mat<T, DimX, DimZ> & other) -> Mat<T, DimZ, DimY>
     {
-        constexpr int Y = DimY;
-        constexpr int Z = DimZ;
-
         union {
             vector_type                rows[DimY];
             std::array<T, DimZ * DimY> values;
-        } result;
-        for (int i = 0; i < Z; ++i) {
-            for (int j = 0; j < Y; ++j) {
-                if constexpr (std::is_floating_point_v<T>) {
-                    result.rows[i * Z + j] =
-                        _mm_dp_ps((__m128)other.getRows()[i],
-                                  (__m128)data_.rows[j],
-                                  0xFF);
+        } result{};
+
+        for (int i = 0; i < DimZ; ++i) {
+            for (int j = 0; j < DimY; ++j) {
+                if constexpr (std::is_floating_point_v<T> &&
+                              (DimX == 2 || (DimX == 4))) {
+                    constexpr int dot_product_mask = 0xF1;
+                    result.values[i * DimZ + j] =
+                        from_m128<T>(_mm_dp_ps(to_m128(other.getRows()[i]),
+                                               to_m128(data_.rows[j]),
+                                               dot_product_mask));
                 }
             }
         }
@@ -52,7 +106,7 @@ struct Mat {
     }
 
     [[nodiscard]] auto
-    getRows() const -> const vector_type *
+    getRows() const -> const vector_type (&)[DimY]
     {
         return data_.rows;
     }
@@ -70,10 +124,17 @@ struct Mat {
 
         ss << '{';
 
-        for (int i = 0; i < static_cast<int>(DimX * DimY); ++i) {
-            ss << x.data_.values[i];
-            if (i < static_cast<int>(DimX * DimY - 1)) {
-                ss << ", ";
+        for (int i = 0; i < DimY; ++i) {
+            ss << '{';
+            for (int j = 0; j < DimX; ++j) {
+                ss << x.data_.values[i * DimX + j];
+                if (j < DimX - 1) {
+                    ss << ", ";
+                }
+            }
+            ss << '}';
+            if (i < DimY - 1) {
+                ss << ",\n";
             }
         }
         ss << '}';
@@ -88,35 +149,40 @@ private:
     } data_;
 };
 
+template<int M, int N>
 auto
-main(int argc, char ** argv) -> int
+random_float_matrix(float lower_bound, float upper_bound) -> Mat<float, M, N>
 {
-    if (argc != 5) {
-        std::cerr << "Usage: " << argv[0] << " <x1> <x2> <y1> <y2>\n";
-        return -1;
+    static std::mt19937            generator{};
+    std::uniform_real_distribution dist{lower_bound, upper_bound};
+
+    std::array<float, M * N> result{};
+
+    for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < M; ++j) {
+            result[i * M + j] = dist(generator);
+        }
     }
+    return Mat<float, M, N>{result};
+}
 
-    float x1, x2, y1, y2;
+auto
+main(int /*argc*/, char * * /*argv*/) -> int
+{
+    auto a = random_float_matrix<4, 1>(0.0f, 30.0f);
+    std::cout << "a = " << to_string(a) << '\n';
 
-    x1 = strtof(argv[1], nullptr);
-    x2 = strtof(argv[2], nullptr);
-    y1 = strtof(argv[3], nullptr);
-    y2 = strtof(argv[4], nullptr);
+    auto b = random_float_matrix<4, 1>(0.0f, 30.0f);
+    std::cout << "b = " << to_string(b) << '\n';
 
-    using Vec2f = Mat<float, 4, 1>;
-    Vec2f a{{x1, x1, x2, x2}};
-    Vec2f b{{y1, y1, y2, y2}};
+    auto m = random_float_matrix<4, 4>(-10.0f, 10.0f);
+    std::cout << "m =\n" << to_string(m) << '\n';
 
     auto c = a + b;
-
-    std::cout << to_string(c) << '\n';
-
-    using Mat4f = Mat<float, 4, 4>;
-    Mat4f m{{x1, x2, y1, y2, x1, x2, y1, y2}};
+    std::cout << "c = a + b = " << to_string(c) << '\n';
 
     auto d = m * c;
-
-    std::cout << to_string(d) << '\n';
+    std::cout << "d = m * c =\n" << to_string(d) << '\n';
 
     return 0;
 }
